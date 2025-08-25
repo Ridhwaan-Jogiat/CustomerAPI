@@ -3,34 +3,38 @@ using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Add services to the container.
+// Add services to the container
 builder.Services.AddControllers();
 
-// Add Entity Framework with SQLite
-//I used sql sevrver lite so user doesnt have to configure db connection settins
+// Configure database (SQLite)
+// Uses environment variable if provided (for hosted), otherwise local file
+var connectionString = Environment.GetEnvironmentVariable("CONNECTION_STRING") 
+                       ?? "Data Source=customer.db";
 builder.Services.AddDbContext<CustomerContext>(options =>
-    options.UseSqlite(builder.Configuration.GetConnectionString("DefaultConnection")));
+    options.UseSqlite(connectionString));
 
-
-// Add CORS
+// Configure CORS to allow both local and hosted frontend
 builder.Services.AddCors(options =>
 {
-    options.AddPolicy("AllowAngular",
-        builder =>
+    options.AddPolicy("AllowFrontend",
+        policy =>
         {
-            builder.WithOrigins("http://localhost:4200")
-                   .AllowAnyHeader()
-                   .AllowAnyMethod();
+            policy.WithOrigins(
+                "http://localhost:4200",                // Angular dev server
+                "https://customer-app-iota.vercel.app"  // hosted frontend
+            )
+            .AllowAnyHeader()
+            .AllowAnyMethod();
         });
 });
 
-// Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
+// Swagger for development only
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
 var app = builder.Build();
 
-// Configure the HTTP request pipeline.
+// Swagger in development
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
@@ -38,18 +42,19 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseHttpsRedirection();
-
-app.UseCors("AllowAngular");
-
+app.UseCors("AllowFrontend");
 app.UseAuthorization();
-
 app.MapControllers();
 
-// Create database on startup
+// Ensure SQLite database is created
 using (var scope = app.Services.CreateScope())
 {
     var context = scope.ServiceProvider.GetRequiredService<CustomerContext>();
     context.Database.EnsureCreated();
 }
+
+// Use dynamic port for Render; default to 5000 for local
+var port = Environment.GetEnvironmentVariable("PORT") ?? "5000";
+app.Urls.Add($"http://*:{port}");
 
 app.Run();
